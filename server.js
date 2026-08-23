@@ -6,7 +6,7 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// ADVANCED HYBRID ENGINE V2 (EXACT CODE)
+// ADVANCED HYBRID ENGINE V2
 // ==========================================
 
 class DataQualityManager {
@@ -165,7 +165,7 @@ class AdvancedHybridEngineV2 {
     const probabilityBig = this.sigmoid(score / Math.max(total, 1e-9));
     const edge = Math.abs(probabilityBig - 0.5);
 
-    // Pure Mathematical Output Based On Probabilities
+    // Dynamic Result Calculation
     const prediction = probabilityBig >= 0.5 ? 'BIG' : 'SMALL';
     const probBig = Math.round(probabilityBig * 100);
     const probSmall = 100 - probBig;
@@ -181,7 +181,8 @@ class AdvancedHybridEngineV2 {
   }
 }
 
-const engine = new AdvancedHybridEngineV2();
+// Memory Instance persistent rahegi
+const globalEngine = new AdvancedHybridEngineV2();
 
 // ==========================================
 // API ROUTE
@@ -194,13 +195,13 @@ app.post('/predict', (req, res) => {
       return res.status(400).json({ error: "Invalid history array" });
     }
 
-    const result = engine.predict(history);
+    const result = globalEngine.predict(history);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/', (req, res) => res.send("Exact Math Advanced Hybrid Engine V2 API Live!"));
+app.get('/', (req, res) => res.send("Persistent Calculation Live!"));
 
 module.exports = app;
