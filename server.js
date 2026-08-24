@@ -3,206 +3,604 @@ const cors = require('cors');
 const app = express();
 
 app.use(cors());
+// Security: Limit payload size to protect against DoS attacks
 app.use(express.json({ limit: '1mb' }));
 
-// ==========================================================
-// SELF-LEARNING ENGINE (ACTIVE LEARNING STORE)
-// ==========================================================
-class DynamicLearningStore {
-    constructor() {
-        this.weights = new Map(); // Dynamic weight adjustment
-    }
+/* ============================================================
+   FX RAJ 2026 — ADVANCED BIG / SMALL PATTERN ANALYZER
+   MADE BY FX RAJ
+   ============================================================ */
 
-    getWeight(patternName, baseWeight) {
-        if (!this.weights.has(patternName)) {
-            return baseWeight;
-        }
-        const stat = this.weights.get(patternName);
-        // Laplace smoothing for statistical probability
-        const accuracy = (stat.wins + 5) / (stat.total + 10);
-        const multiplier = 0.75 + (accuracy - 0.5) * Math.min(1, stat.total / 30);
-        return baseWeight * Math.max(0.2, Math.min(2.0, multiplier));
-    }
+function calculateFXRaj2026(history) {
 
-    recordOutcome(patternName, wasCorrect) {
-        const current = this.weights.get(patternName) || { wins: 0, total: 0 };
-        this.weights.set(patternName, {
-            wins: current.wins + (wasCorrect ? 1 : 0),
-            total: current.total + 1
-        });
-    }
+    // -----------------------------
+    // CONFIG
+    // -----------------------------
+    const CONFIG = {
+        minHistory: 30,
 
-    getAllStats() {
-        return Object.fromEntries(this.weights);
-    }
-}
+        windows: {
+            micro: 5,
+            short: 10,
+            medium: 20,
+            long: 40,
+            deep: 60
+        },
 
-const learningStore = new DynamicLearningStore();
+        weights: {
+            trend: 18,
+            momentum: 16,
+            transition: 15,
+            frequency: 12,
+            streak: 10,
+            similarity: 10,
+            entropy: 7,
+            recency: 12
+        },
 
-// ==========================================================
-// CALCULATOR 1: ASURA V8 WITH SELF-LEARNING
-// ==========================================================
-function calculateAsuraV8(history) {
-    if (!Array.isArray(history) || history.length < 10) {
-        return { decision: "S", confidence: 0, reason: "INSUFFICIENT_DATA" };
+        confidenceThreshold: 60
+    };
+
+    // -----------------------------
+    // VALIDATION
+    // -----------------------------
+    if (!Array.isArray(history)) {
+        return {
+            decision: "WAIT",
+            confidence: 0,
+            reason: "Invalid history"
+        };
     }
 
     const data = history
-        .slice(-10)
-        .map(h => {
-            const num = parseInt(h?.number ?? h);
-            if (!Number.isFinite(num)) return null;
-            if (typeof getType === "function") {
-                const type = getType(num);
-                return type === "BIG" || type === "SMALL" ? type : null;
+        .map(Number)
+        .filter(n => Number.isFinite(n) && n >= 0 && n <= 9);
+
+    if (data.length < CONFIG.minHistory) {
+        return {
+            decision: "WAIT",
+            confidence: 0,
+            reason: `Need at least ${CONFIG.minHistory} valid results`,
+            sampleSize: data.length
+        };
+    }
+
+    // -----------------------------
+    // BASIC MAPPING
+    // -----------------------------
+    const type = n => n >= 5 ? "BIG" : "SMALL";
+
+    const sequence = data.map(type);
+
+    // -----------------------------
+    // HELPERS
+    // -----------------------------
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    function signScore(big, small) {
+        const total = big + small;
+
+        if (!total) return 0;
+
+        return ((big - small) / total) * 100;
+    }
+
+    function getWindow(arr, size) {
+        return arr.slice(Math.max(0, arr.length - size));
+    }
+
+    function countTypes(arr) {
+        let big = 0;
+        let small = 0;
+
+        for (const x of arr) {
+            if (x === "BIG") big++;
+            else small++;
+        }
+
+        return { big, small };
+    }
+
+    // -----------------------------
+    // 1. MULTI WINDOW TREND
+    // -----------------------------
+    function trendAnalysis() {
+
+        const windows = [
+            CONFIG.windows.micro,
+            CONFIG.windows.short,
+            CONFIG.windows.medium,
+            CONFIG.windows.long,
+            CONFIG.windows.deep
+        ];
+
+        const weights = [1.5, 1.3, 1.15, 1, 0.8];
+
+        let score = 0;
+
+        windows.forEach((size, i) => {
+
+            const w = getWindow(sequence, size);
+            const c = countTypes(w);
+
+            score += signScore(c.big, c.small) * weights[i];
+        });
+
+        const maxWeight = weights.reduce((a, b) => a + b, 0);
+
+        return clamp(score / maxWeight, -100, 100);
+    }
+
+    // -----------------------------
+    // 2. MOMENTUM ANALYSIS
+    // -----------------------------
+    function momentumAnalysis() {
+
+        const recent = getWindow(sequence, 12);
+
+        if (recent.length < 4) return 0;
+
+        let score = 0;
+
+        for (let i = 1; i < recent.length; i++) {
+
+            const current = recent[i];
+            const previous = recent[i - 1];
+
+            const weight = i / recent.length;
+
+            if (current === "BIG") {
+                score += previous === "BIG"
+                    ? 1.2 * weight
+                    : 0.4 * weight;
+            } else {
+                score += previous === "SMALL"
+                    ? -1.2 * weight
+                    : -0.4 * weight;
             }
-            return num >= 5 ? "BIG" : "SMALL";
-        })
-        .filter(Boolean);
+        }
 
-    if (data.length < 10) {
-        return { decision: "S", confidence: 0, reason: "INVALID_DATA" };
+        return clamp((score / 7) * 100, -100, 100);
     }
 
-    const N = data.length;
-    let big = 0, small = 0;
-    for (const x of data) x === "BIG" ? big++ : small++;
+    // -----------------------------
+    // 3. STREAK ANALYSIS
+    // -----------------------------
+    function streakAnalysis() {
 
-    const bigRate = big / N;
-    const smallRate = small / N;
+        const last = sequence[sequence.length - 1];
 
-    let weightedBig = 0, totalWeight = 0;
-    for (let i = 0; i < N; i++) {
-        const weight = i + 1;
-        totalWeight += weight;
-        if (data[i] === "BIG") weightedBig += weight;
+        let streak = 0;
+
+        for (let i = sequence.length - 1; i >= 0; i--) {
+
+            if (sequence[i] === last)
+                streak++;
+            else
+                break;
+        }
+
+        if (last === "BIG") {
+
+            if (streak >= 5) return -65;
+            if (streak === 4) return -40;
+            if (streak === 3) return -15;
+            return 20;
+
+        } else {
+
+            if (streak >= 5) return 65;
+            if (streak === 4) return 40;
+            if (streak === 3) return 15;
+            return -20;
+        }
     }
-    const recentBigRate = weightedBig / totalWeight;
 
-    // Self-Learning Dynamic Weight Multipliers
-    const wRecency = learningStore.getWeight('v8_recency', 0.35);
-    const wEma = learningStore.getWeight('v8_ema', 0.25);
-    const wShift = learningStore.getWeight('v8_shift', 0.20);
-    const wSwitch = learningStore.getWeight('v8_switch', 0.20);
+    // -----------------------------
+    // 4. FREQUENCY / BALANCE
+    // -----------------------------
+    function frequencyAnalysis() {
 
-    let switches = 0;
-    for (let i = 1; i < N; i++) if (data[i] !== data[i - 1]) switches++;
-    const switchRate = switches / (N - 1);
+        const recent = getWindow(sequence, 30);
+        const c = countTypes(recent);
 
-    let ema = 0;
-    const alpha = 0.25;
-    for (let i = 0; i < N; i++) {
-        const val = data[i] === "BIG" ? 1 : -1;
-        ema = i === 0 ? val : alpha * val + (1 - alpha) * ema;
+        return clamp(signScore(c.big, c.small), -100, 100);
     }
 
-    const shift = (data.slice(5).filter(x => x === "BIG").length / 5) - (data.slice(0, 5).filter(x => x === "BIG").length / 5);
+    // -----------------------------
+    // 5. TRANSITION MATRIX
+    // -----------------------------
+    function transitionAnalysis() {
 
-    const evidence = (
-        Math.abs(recentBigRate - 0.5) * wRecency +
-        Math.abs(ema) / 1.0 * wEma +
-        Math.abs(shift) * wShift +
-        Math.abs(switchRate - 0.5) * wSwitch
+        let BB = 0;
+        let BS = 0;
+        let SB = 0;
+        let SS = 0;
+
+        for (let i = 1; i < sequence.length; i++) {
+
+            const prev = sequence[i - 1];
+            const curr = sequence[i];
+
+            if (prev === "BIG" && curr === "BIG") BB++;
+            if (prev === "BIG" && curr === "SMALL") BS++;
+            if (prev === "SMALL" && curr === "BIG") SB++;
+            if (prev === "SMALL" && curr === "SMALL") SS++;
+        }
+
+        const last = sequence[sequence.length - 1];
+
+        let bigProbability = 50;
+
+        if (last === "BIG") {
+
+            const total = BB + BS;
+
+            if (total > 0)
+                bigProbability = (BB / total) * 100;
+
+        } else {
+
+            const total = SB + SS;
+
+            if (total > 0)
+                bigProbability = (SB / total) * 100;
+        }
+
+        return (bigProbability - 50) * 2;
+    }
+
+    // -----------------------------
+    // 6. RECENCY DECAY
+    // -----------------------------
+    function recencyAnalysis() {
+
+        const recent = getWindow(sequence, 20);
+
+        let score = 0;
+        let totalWeight = 0;
+
+        recent.forEach((v, i) => {
+
+            const weight = Math.pow(1.08, i);
+
+            score += v === "BIG"
+                ? weight
+                : -weight;
+
+            totalWeight += weight;
+        });
+
+        return clamp((score / totalWeight) * 100, -100, 100);
+    }
+
+    // -----------------------------
+    // 7. ENTROPY
+    // -----------------------------
+    function entropyAnalysis() {
+
+        const recent = getWindow(sequence, 30);
+        const c = countTypes(recent);
+
+        const total = recent.length;
+
+        if (!total) return 1;
+
+        const pBig = c.big / total;
+        const pSmall = c.small / total;
+
+        let entropy = 0;
+
+        if (pBig > 0)
+            entropy -= pBig * Math.log2(pBig);
+
+        if (pSmall > 0)
+            entropy -= pSmall * Math.log2(pSmall);
+
+        return entropy;
+    }
+
+    // -----------------------------
+    // 8. PATTERN SIMILARITY
+    // -----------------------------
+    function similarityAnalysis() {
+
+        const patternLength = 5;
+
+        if (sequence.length < patternLength + 10)
+            return 0;
+
+        const current = sequence.slice(-patternLength);
+
+        let bigMatches = 0;
+        let smallMatches = 0;
+        let total = 0;
+
+        for (
+            let i = 0;
+            i <= sequence.length - patternLength - 1;
+            i++
+        ) {
+
+            const candidate = sequence.slice(
+                i,
+                i + patternLength
+            );
+
+            let match = true;
+
+            for (let j = 0; j < patternLength; j++) {
+
+                if (candidate[j] !== current[j]) {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) {
+
+                const next = sequence[i + patternLength];
+
+                if (next === "BIG")
+                    bigMatches++;
+                else
+                    smallMatches++;
+
+                total++;
+            }
+        }
+
+        if (total === 0)
+            return 0;
+
+        return signScore(bigMatches, smallMatches);
+    }
+
+    // -----------------------------
+    // 9. NUMBER MOMENTUM
+    // -----------------------------
+    function numericMomentum() {
+
+        const recent = getWindow(data, 12);
+
+        let score = 0;
+
+        for (let i = 1; i < recent.length; i++) {
+
+            const diff = recent[i] - recent[i - 1];
+
+            score += diff * (i / recent.length);
+        }
+
+        return clamp(score * 5, -100, 100);
+    }
+
+    // -----------------------------
+    // 10. DECISION STABILITY
+    // -----------------------------
+    function stabilityAnalysis() {
+
+        const results = [];
+
+        const windows = [5, 10, 20];
+
+        for (const size of windows) {
+
+            const w = getWindow(sequence, size);
+            const c = countTypes(w);
+
+            results.push(
+                signScore(c.big, c.small)
+            );
+        }
+
+        const avg =
+            results.reduce((a, b) => a + b, 0)
+            / results.length;
+
+        const variance =
+            results.reduce(
+                (sum, x) => sum + Math.pow(x - avg, 2),
+                0
+            ) / results.length;
+
+        return {
+            average: avg,
+            volatility: Math.sqrt(variance)
+        };
+    }
+
+    // ============================================================
+    // RUN ANALYSIS
+    // ============================================================
+
+    const trend = trendAnalysis();
+    const momentum = momentumAnalysis();
+    const streak = streakAnalysis();
+    const frequency = frequencyAnalysis();
+    const transition = transitionAnalysis();
+    const recency = recencyAnalysis();
+    const entropy = entropyAnalysis();
+    const similarity = similarityAnalysis();
+    const numeric = numericMomentum();
+    const stability = stabilityAnalysis();
+
+    // ============================================================
+    // WEIGHTED SCORE
+    // ============================================================
+
+    let score = 0;
+
+    score += trend * CONFIG.weights.trend / 100;
+    score += momentum * CONFIG.weights.momentum / 100;
+    score += transition * CONFIG.weights.transition / 100;
+    score += frequency * CONFIG.weights.frequency / 100;
+    score += streak * CONFIG.weights.streak / 100;
+    score += similarity * CONFIG.weights.similarity / 100;
+    score += recency * CONFIG.weights.recency / 100;
+    score += numeric * 0.05;
+
+    score = clamp(score, -100, 100);
+
+    // ============================================================
+    // CONSENSUS
+    // ============================================================
+
+    const signals = [
+        trend,
+        momentum,
+        transition,
+        frequency,
+        streak,
+        similarity,
+        recency
+    ];
+
+    let bigVotes = 0;
+    let smallVotes = 0;
+
+    for (const s of signals) {
+        if (s > 5) bigVotes++;
+        else if (s < -5) smallVotes++;
+    }
+
+    const totalVotes = bigVotes + smallVotes;
+
+    const consensus =
+        totalVotes > 0
+            ? Math.abs(bigVotes - smallVotes) / totalVotes
+            : 0;
+
+    // ============================================================
+    // ENTROPY PENALTY
+    // ============================================================
+
+    const entropyPenalty =
+        entropy > 0.90
+            ? 18
+            : entropy > 0.80
+                ? 10
+                : entropy > 0.65
+                    ? 5
+                    : 0;
+
+    // ============================================================
+    // VOLATILITY PENALTY
+    // ============================================================
+
+    const volatilityPenalty =
+        stability.volatility > 60
+            ? 18
+            : stability.volatility > 45
+                ? 10
+                : stability.volatility > 30
+                    ? 5
+                    : 0;
+
+    // ============================================================
+    // CONFIDENCE
+    // ============================================================
+
+    let confidence = Math.abs(score);
+
+    confidence =
+        confidence * 0.65 +
+        consensus * 100 * 0.35;
+
+    confidence -= entropyPenalty;
+    confidence -= volatilityPenalty;
+
+    confidence = clamp(
+        Math.round(confidence),
+        0,
+        99
     );
 
-    const confidence = Math.min(100, Math.max(0, evidence * 100));
-    const analysisDirection = recentBigRate >= 0.5 ? "BIG" : "SMALL";
+    // ============================================================
+    // DECISION
+    // ============================================================
+
+    let decision;
+
+    if (confidence < CONFIG.confidenceThreshold) {
+        decision = "WAIT";
+    } else {
+        decision = score >= 0 ? "BIG" : "SMALL";
+    }
+
+    // ============================================================
+    // PROBABILITY ESTIMATE
+    // ============================================================
+
+    const probabilityBig =
+        clamp(
+            Math.round(50 + score / 2),
+            1,
+            99
+        );
+
+    const probabilitySmall = 100 - probabilityBig;
+
+    // ============================================================
+    // CURRENT STREAK
+    // ============================================================
+
+    const lastType = sequence[sequence.length - 1];
+
+    let currentStreak = 0;
+
+    for (let i = sequence.length - 1; i >= 0; i--) {
+        if (sequence[i] === lastType) currentStreak++;
+        else break;
+    }
+
+    // ============================================================
+    // FINAL RESULT
+    // ============================================================
 
     return {
-        prediction: analysisDirection,
-        decision: analysisDirection === "BIG" ? "B" : "S",
-        confidence: Number(confidence.toFixed(2)),
-        probBig: Math.round(recentBigRate * 100),
-        probSmall: 100 - Math.round(recentBigRate * 100),
-        activeWeights: { wRecency, wEma, wShift, wSwitch },
-        status: "ASURA_V8_SELF_LEARNING"
-    };
-}
-
-// ==========================================================
-// CALCULATOR 2: ASURA V9 WITH SELF-LEARNING
-// ==========================================================
-function calculateAsuraV9(history) {
-    if (!Array.isArray(history) || history.length < 10) {
-        return { decision: "S", confidence: 0, status: "INSUFFICIENT_DATA" };
-    }
-
-    const data = history
-        .slice(-10)
-        .map(h => {
-            const n = Number(h?.number ?? h);
-            if (!Number.isFinite(n)) return null;
-            if (typeof getType === "function") {
-                const t = getType(n);
-                return t === "BIG" || t === "SMALL" ? t : null;
-            }
-            return n >= 5 ? "BIG" : "SMALL";
-        })
-        .filter(Boolean);
-
-    if (data.length !== 10) {
-        return { decision: "S", confidence: 0, status: "INVALID_DATA" };
-    }
-
-    const N = 10;
-    const toNum = x => x === "BIG" ? 1 : -1;
-    const clamp = (x, min, max) => Math.max(min, Math.min(max, x));
-
-    // Dynamic Learning Weights for V9 Core Signals
-    const wRecency = learningStore.getWeight('v9_recency', 0.25);
-    const wMomentum = learningStore.getWeight('v9_momentum', 0.20);
-    const wPattern = learningStore.getWeight('v9_pattern', 0.20);
-    const wTransition = learningStore.getWeight('v9_transition', 0.15);
-    const wAutocorr = learningStore.getWeight('v9_autocorr', 0.10);
-    const wRegime = learningStore.getWeight('v9_regime', 0.10);
-
-    const big = data.filter(x => x === "BIG").length;
-    const bigRate = big / N;
-
-    let weightedScore = 0, totalWeight = 0;
-    for (let i = 0; i < N; i++) {
-        const weight = Math.pow(1.35, i);
-        weightedScore += toNum(data[i]) * weight;
-        totalWeight += weight;
-    }
-    const recencyScore = weightedScore / totalWeight;
-
-    let emaFast = toNum(data[0]), emaMedium = toNum(data[0]), emaSlow = toNum(data[0]);
-    for (let i = 1; i < N; i++) {
-        const val = toNum(data[i]);
-        emaFast = 0.45 * val + 0.55 * emaFast;
-        emaMedium = 0.25 * val + 0.75 * emaMedium;
-        emaSlow = 0.12 * val + 0.88 * emaSlow;
-    }
-    const momentumScore = emaFast * 0.50 + emaMedium * 0.30 + emaSlow * 0.20;
-
-    let patternScore = (recencyScore > 0 ? 0.3 : -0.3); // Pattern estimation fallback
-    let transitionScore = (toNum(data[N - 1]) * 0.2);
-    let autocorrelationScore = (recencyScore * momentumScore);
-    const regimeShift = (data.slice(5).filter(x => x === "BIG").length / 5) - (data.slice(0, 5).filter(x => x === "BIG").length / 5);
-
-    let score =
-        recencyScore * wRecency +
-        momentumScore * wMomentum +
-        patternScore * wPattern +
-        transitionScore * wTransition +
-        autocorrelationScore * wAutocorr +
-        regimeShift * wRegime;
-
-    score = clamp(score, -1, 1);
-    const decision = score >= 0 ? "B" : "S";
-    const confidence = Math.abs(score) * 100;
-    const probBig = Math.round(((score + 1) / 2) * 100);
-
-    return {
-        prediction: decision === "B" ? "BIG" : "SMALL",
+        engine: "FX RAJ 2026",
+        author: "MADE BY FX RAJ",
         decision,
-        confidence: Number(clamp(confidence, 0, 100).toFixed(2)),
-        probBig,
-        probSmall: 100 - probBig,
-        score: Number(score.toFixed(4)),
-        learnedWeights: { wRecency, wMomentum, wPattern, wTransition, wAutocorr, wRegime },
-        status: "ASURA_V9_SELF_LEARNING"
+        confidence,
+        probability: {
+            BIG: probabilityBig,
+            SMALL: probabilitySmall
+        },
+        score: Math.round(score * 100) / 100,
+        current: {
+            type: lastType,
+            number: data[data.length - 1],
+            streak: currentStreak
+        },
+        analysis: {
+            trend: Math.round(trend),
+            momentum: Math.round(momentum),
+            transition: Math.round(transition),
+            frequency: Math.round(frequency),
+            streak: Math.round(streak),
+            recency: Math.round(recency),
+            similarity: Math.round(similarity),
+            numericMomentum: Math.round(numeric),
+            entropy: Math.round(entropy * 1000) / 1000,
+            stability: {
+                average: Math.round(stability.average),
+                volatility: Math.round(stability.volatility)
+            }
+        },
+        consensus: {
+            bigVotes,
+            smallVotes,
+            ratio: Math.round(consensus * 100)
+        },
+        meta: {
+            sampleSize: data.length,
+            validData: data.length,
+            mode: "MULTI-PATTERN ANALYSIS",
+            random: false
+        }
     };
 }
 
@@ -212,41 +610,20 @@ function calculateAsuraV9(history) {
 
 app.post('/predict', (req, res) => {
     try {
-        const { history, version = "v9" } = req.body;
+        const { history } = req.body;
+
         if (!history || !Array.isArray(history)) {
             return res.status(400).json({ error: "Invalid history array" });
         }
 
-        const result = version.toLowerCase() === "v8" 
-            ? calculateAsuraV8(history) 
-            : calculateAsuraV9(history);
-
+        const result = calculateFXRaj2026(history);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// SELF-LEARNING FEEDBACK ENDPOINT
-app.post('/feedback', (req, res) => {
-    try {
-        const { patternName, wasCorrect } = req.body;
-        if (!patternName || typeof wasCorrect !== 'boolean') {
-            return res.status(400).json({ error: "patternName (string) and wasCorrect (boolean) required" });
-        }
-
-        learningStore.recordOutcome(patternName, wasCorrect);
-        res.json({ success: true, stats: learningStore.getAllStats() });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/learning-stats', (req, res) => {
-    res.json(learningStore.getAllStats());
-});
-
-app.get('/', (req, res) => res.send("Engine Online with Self-Learning V8 & V9!"));
+app.get('/', (req, res) => res.send("FX RAJ 2026 Engine Online!"));
 
 const PORT = process.env.PORT || 3000;
 if (require.main === module) {
