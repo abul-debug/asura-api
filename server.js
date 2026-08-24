@@ -6,167 +6,222 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================================
-// HYPER-VOID ULTRA OMNI ENGINE v10.0 (NO-SKIP)
+// ADVANCED HYBRID ENGINE V2
 // ==========================================
 
-function hyperVoidUltraOmniPredict(historyInput, periodNumber = null) {
-    if (!historyInput || !Array.isArray(historyInput) || historyInput.length === 0) {
-        return { decision: "BIG", confidence: 50.00, probBig: 50.00, probSmall: 50.00 };
-    }
-
-    // 1️⃣ HIGH-PRECISION DATA NORMALIZATION (0: SMALL, 1: BIG)
-    const normalized = historyInput.map((item) => {
-        const raw = typeof item === 'object' && item !== null ? (item.number ?? item.num ?? item.result) : item;
+class DataQualityManager {
+  normalize(input) {
+    if (!Array.isArray(input)) return [];
+    return input
+      .map((item) => {
+        const raw = typeof item === 'object' && item !== null ? (item.number ?? item.result) : item;
         const text = String(raw).trim().toLowerCase();
         if (['big', 'b', '1'].includes(text)) return 1;
         if (['small', 's', '0'].includes(text)) return 0;
-        const num = Number(raw);
-        return Number.isFinite(num) ? (num >= 5 ? 1 : 0) : null;
-    }).filter(v => v !== null);
+        const numeric = Number(raw);
+        if (Number.isFinite(numeric)) return numeric >= 5 ? 1 : 0;
+        return null;
+      })
+      .filter((v) => v !== null);
+  }
+}
 
-    if (normalized.length === 0) {
-        return { decision: "BIG", confidence: 50.00, probBig: 50.00, probSmall: 50.00 };
-    }
+class RegimeDetector {
+  rate(x) { return x.length ? x.reduce((a, b) => a + b, 0) / x.length : 0.5; }
+  
+  alternation(x, n = 16) {
+    const a = x.slice(-n);
+    if (a.length < 2) return 0;
+    let changes = 0;
+    for (let i = 1; i < a.length; i++) if (a[i] !== a[i - 1]) changes++;
+    return changes / (a.length - 1);
+  }
 
-    const sizeHistory = normalized.slice().reverse().map(v => v === 1 ? 'BIG' : 'SMALL');
-    const n = normalized.length;
-    let logitScore = 0;
-    let totalWeight = 0;
+  run(x) {
+    if (!x.length) return 0;
+    const last = x[x.length - 1];
+    let n = 1;
+    for (let i = x.length - 2; i >= 0 && x[i] === last; i--) n++;
+    return n;
+  }
 
-    // Helper: Add weighted logit with dynamic clipping
-    const addSignal = (probBig, baseWeight) => {
-        const p = Math.max(0.0001, Math.min(0.9999, probBig));
-        const logit = Math.log(p / (1 - p));
-        const weight = baseWeight * (0.30 + Math.abs(p - 0.5) * 2.2);
-        logitScore += logit * weight;
-        totalWeight += weight;
+  detect(x) {
+    const all = this.rate(x), recent = this.rate(x.slice(-12));
+    const alt = this.alternation(x), run = this.run(x);
+    if (Math.abs(recent - all) >= 0.22) return 'SHIFTING';
+    if (alt >= 0.75) return 'HIGH_ALTERNATION';
+    if (run >= 4) return 'PERSISTENT_RUNS';
+    if (all >= 0.62) return 'BIG_DOMINANT';
+    if (all <= 0.38) return 'SMALL_DOMINANT';
+    return 'BALANCED';
+  }
+}
+
+class PatternPerformanceStore {
+  constructor() { this.stats = {}; }
+  
+  get(name) { return this.stats[name] ?? { wins: 0, total: 0 }; }
+
+  // Call this when actual outcome is known to enable active learning
+  recordOutcome(name, wasCorrect) {
+    const stat = this.get(name);
+    this.stats[name] = {
+      wins: stat.wins + (wasCorrect ? 1 : 0),
+      total: stat.total + 1
     };
+  }
 
-    // 2️⃣ SHANNON ENTROPY DECAY (Noise Reduction Factor)
-    const bigProbObserved = normalized.filter(v => v === 1).length / n;
-    const smallProbObserved = 1 - bigProbObserved;
-    let entropy = 1.0;
-    if (bigProbObserved > 0 && smallProbObserved > 0) {
-        entropy = -(bigProbObserved * Math.log2(bigProbObserved) + smallProbObserved * Math.log2(smallProbObserved));
+  weight(signal) {
+    const stat = this.get(signal.name);
+    const accuracy = (stat.wins + 5) / (stat.total + 10);
+    const learned = 0.75 + (accuracy - 0.5) * Math.min(1, stat.total / 40);
+    const support = Math.min(1, signal.support / 10);
+    return signal.baseWeight * (0.35 + 0.65 * support) * learned;
+  }
+}
+
+class AdvancedHybridEngineV2 {
+  constructor() {
+    this.quality = new DataQualityManager();
+    this.regimes = new RegimeDetector();
+    this.performance = new PatternPerformanceStore();
+    this.maxHistory = 2000;
+  }
+
+  clamp(p) { return Math.max(0.001, Math.min(0.999, p)); }
+  logit(p) { const q = this.clamp(p); return Math.log(q / (1 - q)); }
+  sigmoid(x) { const v = Math.max(-30, Math.min(30, x)); return 1 / (1 + Math.exp(-v)); }
+  rate(x, prior = 0.5, strength = 8) { return x.length ? (x.reduce((a, b) => a + b, 0) + prior * strength) / (x.length + strength) : prior; }
+  ewma(x, alpha = 0.18) { let p = 0.5; for (const v of x) p = alpha * v + (1 - alpha) * p; return p; }
+
+  transition(x, order, prior) {
+    if (x.length <= order) return { probabilityBig: prior, support: 0 };
+    const context = x.slice(-order).join('');
+    let big = 0, support = 0;
+    for (let i = order; i < x.length; i++) {
+      if (x.slice(i - order, i).join('') === context) { big += x[i]; support++; }
     }
-    const noiseMultiplier = Math.max(0.65, 1.2 - entropy);
+    return { probabilityBig: (big + prior * 2) / (support + 2), support };
+  }
 
-    // 3️⃣ ADVANCED MULTI-ORDER MARKOV CHAIN (Orders 1, 2, 3, 4 with Decay)
-    for (let order = 1; order <= 4; order++) {
-        if (n <= order) continue;
-        let bigCount = 0, totalCount = 0;
-        const context = normalized.slice(-order).join('');
-        
-        for (let i = order; i < n; i++) {
-            if (normalized.slice(i - order, i).join('') === context) {
-                // Recency Weighting for Markov
-                const recencyWeight = 1 + (i / n);
-                if (normalized[i] === 1) bigCount += recencyWeight;
-                totalCount += recencyWeight;
-            }
-        }
-        if (totalCount > 0) {
-            const probBig = (bigCount + 1) / (totalCount + 2); // Laplace Smoothing
-            const orderWeight = (order === 4 ? 3.0 : order === 3 ? 2.4 : order === 2 ? 1.7 : 1.1) * noiseMultiplier;
-            addSignal(probBig, orderWeight);
-        }
+  signal(name, p, baseWeight, support) { return { name, probabilityBig: p, baseWeight, support }; }
+
+  detect4x4(x) {
+    if (x.length < 8) return null;
+    const a = x.slice(-8, -4), b = x.slice(-4);
+    if (!a.every(v => v === a[0]) || !b.every(v => v === b[0])) return null;
+    const p = a[0] !== b[0] ? b[0] : (1 - b[0]);
+    return this.signal(a[0] !== b[0] ? 'block4x4_continue' : 'block4x4_reverse', p, 0.75, 8);
+  }
+
+  detect2x2(x) {
+    if (x.length < 6) return null;
+    const p = x.slice(-6);
+    if (p[0] === p[1] && p[2] === p[3] && p[4] === p[5] && p[0] !== p[2] && p[2] !== p[4]) {
+      return this.signal('block2x2_cycle', 1 - p[4], 0.70, 6);
+    }
+    if (p[0] === p[1] && p[0] !== p[2]) return this.signal('block2x2_reverse', 1 - p[1], 0.55, 3);
+    return null;
+  }
+
+  detect3x3(x) {
+    if (x.length < 6) return null;
+    const a = x.slice(-6, -3), b = x.slice(-3);
+    return a.every(v => v === a[0]) && b.every(v => v === b[0]) && a[0] !== b[0] 
+      ? this.signal('block3x3_continue', b[0], 0.68, 6) 
+      : null;
+  }
+
+  detectZigzag(x) {
+    if (x.length < 6) return null;
+    const z = x.slice(-6);
+    if (z.some((v, i) => i > 0 && v === z[i - 1])) return null;
+    return this.signal('zigzag', 1 - z[z.length - 1], 0.72, 6);
+  }
+
+  customSignals(x) {
+    const found = [];
+    for (const s of [this.detect4x4(x), this.detect2x2(x), this.detect3x3(x), this.detectZigzag(x)]) if (s) found.push(s);
+    const last = x[x.length - 1];
+    let run = 1;
+    for (let i = x.length - 2; i >= 0 && x[i] === last; i--) run++;
+    if (run >= 3 && run < 8) found.push(this.signal('streak_continue', last, 0.55, run));
+    return found;
+  }
+
+  statisticalSignals(x) {
+    const prior = this.rate(x), t1 = this.transition(x, 1, prior), t2 = this.transition(x, 2, prior), t3 = this.transition(x, 3, prior);
+    return [
+      this.signal('base_rate', prior, 0.55, x.length),
+      this.signal('recent5', this.rate(x.slice(-5), prior, 4), 0.40, 5),
+      this.signal('recent12', this.rate(x.slice(-12), prior, 6), 0.65, 12),
+      this.signal('recent30', this.rate(x.slice(-30), prior, 10), 0.60, 30),
+      this.signal('ewma', this.ewma(x), 0.55, x.length),
+      this.signal('transition1', t1.probabilityBig, 0.80, t1.support),
+      this.signal('transition2', t2.probabilityBig, 0.90, t2.support),
+      this.signal('transition3', t3.probabilityBig, 0.75, t3.support)
+    ];
+  }
+
+  predict(inputRaw, isNewestFirst = true) {
+    // Standardize order: index 0 = oldest, index n-1 = newest
+    const rawCopy = [...inputRaw];
+    const ordered = isNewestFirst ? rawCopy.reverse() : rawCopy;
+    const values = this.quality.normalize(ordered).slice(-this.maxHistory);
+
+    if (values.length === 0) {
+      return { prediction: 'BIG', decision: 'B', confidence: 50, probBig: 50, probSmall: 50, regime: 'BALANCED' };
     }
 
-    // 4️⃣ GAUSSIAN SMOOTHED EMA MOMENTUM
-    const kernel = [0.25, 0.50, 0.25];
-    let smoothedEma = 0.5;
-    let alpha = 0.20;
-    for (let i = 0; i < n; i++) {
-        let val = normalized[i];
-        if (i >= 1 && i < n - 1) {
-            val = normalized[i - 1] * kernel[0] + normalized[i] * kernel[1] + normalized[i + 1] * kernel[2];
-        }
-        smoothedEma = alpha * val + (1 - alpha) * smoothedEma;
-    }
-    addSignal(smoothedEma, 1.8 * noiseMultiplier);
-
-    // 5️⃣ HURST EXPONENT (Fractal Trend vs Mean-Reversion Metric)
-    let switches = 0;
-    for (let i = 1; i < n; i++) {
-        if (normalized[i] !== normalized[i - 1]) switches++;
-    }
-    const meanReversionRatio = switches / Math.max(1, n - 1);
-    const lastResult = sizeHistory[0];
-
-    if (meanReversionRatio >= 0.65) {
-        // Strong Alternating Fractal -> Force Opposite Prediction
-        addSignal(lastResult === 'BIG' ? 0.15 : 0.85, 2.8);
-    } else if (meanReversionRatio <= 0.35) {
-        // Strong Trend Dragging -> Force Continuation Prediction
-        addSignal(lastResult === 'BIG' ? 0.85 : 0.15, 2.5);
-    }
-
-    // 6️⃣ DEEP DYNAMIC STREAK & PARITY REVERSAL PRESSURE
-    let streak = 1;
-    for (let i = 1; i < sizeHistory.length; i++) {
-        if (sizeHistory[i] === lastResult) streak++;
-        else break;
-    }
-
-    if (streak >= 5) {
-        addSignal(lastResult === 'BIG' ? 0.02 : 0.98, 4.5); // Parabolic Reversal Force
-    } else if (streak >= 2) {
-        addSignal(lastResult === 'BIG' ? 0.68 : 0.32, 1.4); // Momentum Hold
-    }
-
-    // 7️⃣ PERIOD NUMEROLOGY & DIGITAL ROOT MATRIX
-    if (periodNumber) {
-        const p = Math.abs(Math.round(periodNumber));
-        const ds = String(p).split('').reduce((s, d) => s + parseInt(d), 0) % 10;
-        const totientLike = (p * 7 + ds * 3) % 10;
-        const mathProb = totientLike >= 5 ? 0.68 : 0.32;
-        addSignal(mathProb, 1.0);
-    }
-
-    // 8️⃣ FINAL LOGISTIC CONVERGENCE & ABSOLUTE DECISION (NO SKIP)
-    const finalScore = logitScore / Math.max(totalWeight, 1e-9);
-    const probBig = 1 / (1 + Math.exp(-finalScore));
-    const probSmall = 1 - probBig;
-
-    const edge = Math.abs(probBig - 0.5);
-    const confidence = Math.min(99.5, Math.max(52.0, 50 + edge * 100));
+    const regime = this.regimes.detect(values);
+    const signals = [...this.statisticalSignals(values), ...this.customSignals(values)];
     
-    // DIRECT GUARANTEED CHOICE ('BIG' OR 'SMALL')
-    const decision = probBig >= 0.5 ? 'BIG' : 'SMALL';
-    const winProb = decision === 'BIG' ? probBig : probSmall;
-    const kellyEdge = (1.0 * winProb - (1 - winProb));
+    let score = 0, total = 0, big = 0, small = 0;
+    for (const s of signals) {
+      const w = this.performance.weight(s) * (0.25 + Math.abs(s.probabilityBig - 0.5) * 2);
+      score += w * this.logit(s.probabilityBig);
+      total += w;
+      if (s.probabilityBig >= 0.5) big++; else small++;
+    }
+
+    const probabilityBig = this.sigmoid(score / Math.max(total, 1e-9));
+    const edge = Math.abs(probabilityBig - 0.5);
+
+    const prediction = probabilityBig >= 0.5 ? 'BIG' : 'SMALL';
+    const probBig = Math.round(probabilityBig * 100);
+    const probSmall = 100 - probBig;
 
     return {
-        prediction: decision,
-        decision: decision === 'BIG' ? 'B' : 'S',
-        confidence: parseFloat(confidence.toFixed(2)),
-        probBig: parseFloat((probBig * 100).toFixed(2)),
-        probSmall: parseFloat((probSmall * 100).toFixed(2)),
-        kellyEdge: parseFloat((kellyEdge * 100).toFixed(2)),
-        streak,
-        fractalRatio: parseFloat(meanReversionRatio.toFixed(2)),
-        entropyNoise: parseFloat(entropy.toFixed(3))
+      prediction,
+      decision: prediction === 'BIG' ? 'B' : 'S',
+      confidence: Math.round(50 + edge * 100),
+      probBig,
+      probSmall,
+      regime
     };
+  }
 }
+
+const globalEngine = new AdvancedHybridEngineV2();
 
 // ==========================================
 // API ROUTES
 // ==========================================
 
 app.post('/predict', (req, res) => {
-    try {
-        const { history, period } = req.body;
-        if (!history || !Array.isArray(history)) {
-            return res.status(400).json({ error: "Invalid or missing history array" });
-        }
-
-        const result = hyperVoidUltraOmniPredict(history, period ?? null);
-        res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+  try {
+    const { history, newestFirst = true } = req.body;
+    if (!history || !Array.isArray(history)) {
+      return res.status(400).json({ error: "Invalid history array" });
     }
+
+    const result = globalEngine.predict(history, newestFirst);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get('/', (req, res) => res.send("Hyper-Void Ultra Omni Engine v10.0 Online!"));
+app.get('/', (req, res) => res.send("Engine Online!"));
 
 module.exports = app;
