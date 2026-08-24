@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+
 const app = express();
 
 app.use(cors());
@@ -81,9 +82,7 @@ function calculateFXRaj2026(history) {
 
     function signScore(big, small) {
         const total = big + small;
-
         if (!total) return 0;
-
         return ((big - small) / total) * 100;
     }
 
@@ -121,10 +120,8 @@ function calculateFXRaj2026(history) {
         let score = 0;
 
         windows.forEach((size, i) => {
-
             const w = getWindow(sequence, size);
             const c = countTypes(w);
-
             score += signScore(c.big, c.small) * weights[i];
         });
 
@@ -145,10 +142,8 @@ function calculateFXRaj2026(history) {
         let score = 0;
 
         for (let i = 1; i < recent.length; i++) {
-
             const current = recent[i];
             const previous = recent[i - 1];
-
             const weight = i / recent.length;
 
             if (current === "BIG") {
@@ -175,7 +170,6 @@ function calculateFXRaj2026(history) {
         let streak = 0;
 
         for (let i = sequence.length - 1; i >= 0; i--) {
-
             if (sequence[i] === last)
                 streak++;
             else
@@ -183,14 +177,11 @@ function calculateFXRaj2026(history) {
         }
 
         if (last === "BIG") {
-
             if (streak >= 5) return -65;
             if (streak === 4) return -40;
             if (streak === 3) return -15;
             return 20;
-
         } else {
-
             if (streak >= 5) return 65;
             if (streak === 4) return 40;
             if (streak === 3) return 15;
@@ -202,10 +193,8 @@ function calculateFXRaj2026(history) {
     // 4. FREQUENCY / BALANCE
     // -----------------------------
     function frequencyAnalysis() {
-
         const recent = getWindow(sequence, 30);
         const c = countTypes(recent);
-
         return clamp(signScore(c.big, c.small), -100, 100);
     }
 
@@ -220,7 +209,6 @@ function calculateFXRaj2026(history) {
         let SS = 0;
 
         for (let i = 1; i < sequence.length; i++) {
-
             const prev = sequence[i - 1];
             const curr = sequence[i];
 
@@ -235,16 +223,11 @@ function calculateFXRaj2026(history) {
         let bigProbability = 50;
 
         if (last === "BIG") {
-
             const total = BB + BS;
-
             if (total > 0)
                 bigProbability = (BB / total) * 100;
-
         } else {
-
             const total = SB + SS;
-
             if (total > 0)
                 bigProbability = (SB / total) * 100;
         }
@@ -263,13 +246,8 @@ function calculateFXRaj2026(history) {
         let totalWeight = 0;
 
         recent.forEach((v, i) => {
-
             const weight = Math.pow(1.08, i);
-
-            score += v === "BIG"
-                ? weight
-                : -weight;
-
+            score += v === "BIG" ? weight : -weight;
             totalWeight += weight;
         });
 
@@ -318,21 +296,12 @@ function calculateFXRaj2026(history) {
         let smallMatches = 0;
         let total = 0;
 
-        for (
-            let i = 0;
-            i <= sequence.length - patternLength - 1;
-            i++
-        ) {
-
-            const candidate = sequence.slice(
-                i,
-                i + patternLength
-            );
+        for (let i = 0; i <= sequence.length - patternLength - 1; i++) {
+            const candidate = sequence.slice(i, i + patternLength);
 
             let match = true;
 
             for (let j = 0; j < patternLength; j++) {
-
                 if (candidate[j] !== current[j]) {
                     match = false;
                     break;
@@ -340,14 +309,11 @@ function calculateFXRaj2026(history) {
             }
 
             if (match) {
-
                 const next = sequence[i + patternLength];
-
                 if (next === "BIG")
                     bigMatches++;
                 else
                     smallMatches++;
-
                 total++;
             }
         }
@@ -368,9 +334,7 @@ function calculateFXRaj2026(history) {
         let score = 0;
 
         for (let i = 1; i < recent.length; i++) {
-
             const diff = recent[i] - recent[i - 1];
-
             score += diff * (i / recent.length);
         }
 
@@ -383,28 +347,17 @@ function calculateFXRaj2026(history) {
     function stabilityAnalysis() {
 
         const results = [];
-
         const windows = [5, 10, 20];
 
         for (const size of windows) {
-
             const w = getWindow(sequence, size);
             const c = countTypes(w);
-
-            results.push(
-                signScore(c.big, c.small)
-            );
+            results.push(signScore(c.big, c.small));
         }
 
-        const avg =
-            results.reduce((a, b) => a + b, 0)
-            / results.length;
+        const avg = results.reduce((a, b) => a + b, 0) / results.length;
 
-        const variance =
-            results.reduce(
-                (sum, x) => sum + Math.pow(x - avg, 2),
-                0
-            ) / results.length;
+        const variance = results.reduce((sum, x) => sum + Math.pow(x - avg, 2), 0) / results.length;
 
         return {
             average: avg,
@@ -448,15 +401,7 @@ function calculateFXRaj2026(history) {
     // CONSENSUS
     // ============================================================
 
-    const signals = [
-        trend,
-        momentum,
-        transition,
-        frequency,
-        streak,
-        similarity,
-        recency
-    ];
+    const signals = [trend, momentum, transition, frequency, streak, similarity, recency];
 
     let bigVotes = 0;
     let smallVotes = 0;
@@ -468,59 +413,27 @@ function calculateFXRaj2026(history) {
 
     const totalVotes = bigVotes + smallVotes;
 
-    const consensus =
-        totalVotes > 0
-            ? Math.abs(bigVotes - smallVotes) / totalVotes
-            : 0;
+    const consensus = totalVotes > 0 ? Math.abs(bigVotes - smallVotes) / totalVotes : 0;
 
     // ============================================================
-    // ENTROPY PENALTY
+    // PENALTIES
     // ============================================================
 
-    const entropyPenalty =
-        entropy > 0.90
-            ? 18
-            : entropy > 0.80
-                ? 10
-                : entropy > 0.65
-                    ? 5
-                    : 0;
+    const entropyPenalty = entropy > 0.90 ? 18 : entropy > 0.80 ? 10 : entropy > 0.65 ? 5 : 0;
+
+    const volatilityPenalty = stability.volatility > 60 ? 18 : stability.volatility > 45 ? 10 : stability.volatility > 30 ? 5 : 0;
 
     // ============================================================
-    // VOLATILITY PENALTY
-    // ============================================================
-
-    const volatilityPenalty =
-        stability.volatility > 60
-            ? 18
-            : stability.volatility > 45
-                ? 10
-                : stability.volatility > 30
-                    ? 5
-                    : 0;
-
-    // ============================================================
-    // CONFIDENCE
+    // CONFIDENCE & DECISION
     // ============================================================
 
     let confidence = Math.abs(score);
 
-    confidence =
-        confidence * 0.65 +
-        consensus * 100 * 0.35;
-
+    confidence = confidence * 0.65 + consensus * 100 * 0.35;
     confidence -= entropyPenalty;
     confidence -= volatilityPenalty;
 
-    confidence = clamp(
-        Math.round(confidence),
-        0,
-        99
-    );
-
-    // ============================================================
-    // DECISION
-    // ============================================================
+    confidence = clamp(Math.round(confidence), 0, 99);
 
     let decision;
 
@@ -534,18 +447,8 @@ function calculateFXRaj2026(history) {
     // PROBABILITY ESTIMATE
     // ============================================================
 
-    const probabilityBig =
-        clamp(
-            Math.round(50 + score / 2),
-            1,
-            99
-        );
-
+    const probabilityBig = clamp(Math.round(50 + score / 2), 1, 99);
     const probabilitySmall = 100 - probabilityBig;
-
-    // ============================================================
-    // CURRENT STREAK
-    // ============================================================
 
     const lastType = sequence[sequence.length - 1];
 
@@ -608,6 +511,7 @@ function calculateFXRaj2026(history) {
 // API ROUTES
 // ==========================================
 
+// Predict Route: Only takes numbers array from request body
 app.post('/predict', (req, res) => {
     try {
         const { history } = req.body;
