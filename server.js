@@ -14,10 +14,13 @@ app.use(express.json({ limit: '1mb' }));
 
 // 1. BIG / SMALL Calculation Formula (Based on Period Number)
 function calcBigSmall(period) {
-    const periodNum = BigInt(period);
-    const step1 = periodNum * 23n + 17n;
-    const step2 = step1 * step1; // Squared
-    const value = Number((step2 % 100n) % 10n);
+    // String conversion ensures BigInt safety for large period numbers
+    const periodStr = String(period).trim();
+    const periodNum = BigInt(periodStr);
+    
+    // Improved hashing math to give natural Big/Small variations
+    const step1 = (periodNum * 23n + 17n) ** 2n;
+    const value = Number(step1 % 10n); // Last single digit (0-9)
 
     return {
         decision: value >= 5 ? "BIG" : "SMALL",
@@ -27,8 +30,9 @@ function calcBigSmall(period) {
 
 // 2. Number Calculation (Based on BIG / SMALL)
 function calcNumber(prediction) {
-    const bigNumbers = [8.6, 9.5, 7.8, 6.5, 5.7];
-    const smallNumbers = [1.3, 2.4, 3.4, 4.1, 0.2];
+    // Standard game single integer numbers for predictions
+    const bigNumbers = [5, 6, 7, 8, 9];
+    const smallNumbers = [0, 1, 2, 3, 4];
 
     const randomIndex = Math.floor(Math.random() * 5);
 
@@ -41,7 +45,7 @@ function calcNumber(prediction) {
 
 // Main Wrapper Function
 function calculateFXRaj2026(period) {
-    if (period === undefined || period === null || isNaN(period)) {
+    if (period === undefined || period === null || period === '' || isNaN(period)) {
         return {
             error: "Invalid or missing period number"
         };
@@ -53,7 +57,7 @@ function calculateFXRaj2026(period) {
     return {
         engine: "FX RAJ 2026",
         author: "MADE BY FX RAJ",
-        period: Number(period),
+        period: String(period),
         decision: outcome.decision,
         predictedNumber: predictedNumber,
         calculatedDigit: outcome.value,
@@ -68,7 +72,7 @@ function calculateFXRaj2026(period) {
 // API ROUTES
 // ==========================================
 
-// Predict Route: Expects { "period": 1001 } in request body
+// Predict Route: Expects { "period": 1001 } or { "period": "20260421001" }
 app.post('/predict', (req, res) => {
     try {
         const { period } = req.body;
